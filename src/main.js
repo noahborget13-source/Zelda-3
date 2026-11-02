@@ -104,7 +104,10 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && mode === 'map') { toggleMap(); return; }
   if (e.code === 'Tab') { e.preventDefault(); if (mode === 'play') openPause(); else if (mode === 'pause') resume(); return; }
   if (mode !== 'play') return;
-  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  // Bloque l'action par défaut de TOUTES les touches de jeu (y compris les répétitions) :
+  // évite le menu des accents de macOS quand on maintient une touche, le défilement, etc.
+  // Les raccourcis navigateur (Cmd/Ctrl/Alt + touche, F1-F12) restent possibles.
+  if (!e.metaKey && !e.ctrlKey && !e.altKey && !/^F\d+$/.test(e.code)) e.preventDefault();
   if (!e.repeat) just[e.code] = true;
   keys[e.code] = true;
 });
