@@ -5,7 +5,8 @@ import { clamp, lerp, mulberry32, angDiff } from './util.js';
 import { World } from './world.js';
 import { Sky } from './sky.js';
 import { PlayerModel, Enemy } from './entities.js';
-import { Builder } from './build.js';
+import { Builder, PARTS } from './build.js';
+import { CH, initCheats } from './cheats.js';
 import { Particles, Sfx } from './fx.js';
 import { WEAPONS, LOOT, FUSE, TUTORIAL } from './data.js';
 import { UI, fillBoard } from './ui.js';
@@ -41,7 +42,7 @@ let camYaw = 0, camPitch = 0.35, camDist = 5.6, sens = 1, shadowsOn = true;
 let last = 0, tAnim = 0, shake = 0, saveT = 0, hudT = 0, miniT = 0, lastCell = '';
 const weather = { on: false, t: 50 };
 const enemies = [], campEnemies = [], night = { v: false };
-let boss = null, trial = null, wander = 0;
+let boss = null, trial = null, wander = 0, cheats = null;
 const ring = []; // anneaux d'épreuve
 
 const P = {
@@ -54,7 +55,7 @@ const newState = (name) => ({
   v: 1, name, hearts: 3, hp: 12, stamMax: 100, orbs: 0, towers: Array(T.TOWERS.length).fill(false), shrines: Array(T.SHRINES.length).fill(false),
   chests: Array(T.CHESTS.length).fill(false), lumis: Array(T.LUMIS.length).fill(false), camps: Array(T.CAMPS.length).fill(false), boss: false,
   apple: 2, mushroom: 0, fire: 0, ice: 0, weapons: [{ id: 'branch', dur: WEAPONS.branch.dur }], sel: 0, time: 0.3, play: 0, kills: 0,
-  pos: { x: 0, y: 13, z: 14 }, yaw: 0, rev: '', taken: [], tut: false, lumiOrbs: 0,
+  pos: { x: 0, y: 13, z: 14 }, yaw: 0, rev: '', taken: [], tut: false, lumiOrbs: 0, cheated: false,
 });
 const count = (a) => a.filter(Boolean).length;
 const maxHp = () => S.hearts * 4;
@@ -97,6 +98,8 @@ function applyState() {
 const locked = () => document.pointerLockElement === canvas;
 window.addEventListener('keydown', (e) => {
   if (mode === 'title' || mode === 'loading') return;
+  if ((e.code === 'F9' || e.code === 'Backquote') && (mode === 'play' || mode === 'cheat')) { e.preventDefault(); if (!e.repeat) toggleCheat(); return; }
+  if (e.code === 'Escape' && mode === 'cheat') { toggleCheat(); return; }
   if (e.code === 'KeyM' && (mode === 'play' || mode === 'map')) { toggleMap(); e.preventDefault(); return; }
   if (e.code === 'Escape' && mode === 'map') { toggleMap(); return; }
   if (e.code === 'Tab') { e.preventDefault(); if (mode === 'play') openPause(); else if (mode === 'pause') resume(); return; }
@@ -175,7 +178,9 @@ $('volRange').addEventListener('input', (e) => { sfx.vol = +e.target.value; });
 $('shadowChk').addEventListener('change', (e) => { shadowsOn = e.target.checked; });
 $('qualitySel').addEventListener('change', (e) => { renderer.setPixelRatio(Math.min((window.devicePixelRatio || 1) * +e.target.value, 2)); renderer.setSize(window.innerWidth, window.innerHeight, false); });
 $('btnPublish').addEventListener('click', async () => {
-  const st = $('pubStatus'); st.textContent = 'Envoi…';
+  const st = $('pubStatus');
+  if (S.cheated) { st.textContent = 'Mode développeur utilisé : publication désactivée pour cette partie.'; return; }
+  st.textContent = 'Envoi…';
   try {
     await net.submitScore({ name: S.name, score: score(), towers: count(S.towers), shrines: count(S.shrines), lumis: count(S.lumis) });
     st.textContent = net.ONLINE ? 'Score publié en ligne ✔' : 'Score enregistré localement ✔ (config.js non rempli)';
@@ -184,6 +189,49 @@ $('btnPublish').addEventListener('click', async () => {
 });
 $('btnSaveQuit').addEventListener('click', () => { saveGame(); location.reload(); });
 $('btnRespawn').addEventListener('click', respawn);
+
+/* ============================== Mode développeur ============================== */
+function toggleCheat() {
+  if (!cheats) return;
+  if (mode === 'play') {
+    mode = 'cheat'; for (const k in keys) keys[k] = false; for (const k in mouse) mouse[k] = false;
+    if (document.exitPointerLock) document.exitPointerLock();
+    cheats.open();
+  } else if (mode === 'cheat') {
+    cheats.close(); mode = 'play';
+    if (canvas.requestPointerLock) { try { canvas.requestPointerLock(); } catch {} }
+  }
+}
+function cheatApi() {
+  const ahead = (d) => [P.x + Math.sin(P.yaw) * d, P.z + Math.cos(P.yaw) * d];
+  return {
+    mark: () => { if (!S.cheated) { S.cheated = true; ui.toast('Mode développeur : publication du score désactivée', 3500); } },
+    toast: (t, ms) => ui.toast(t, ms), close: () => toggleCheat(),
+    fly: (on) => { if (!on) { P.vy = 0; } },
+    heal: () => { P.hp = maxHp(); P.dead = false; },
+    heart: () => { S.hearts = Math.min(20, S.hearts + 1); P.hp = maxHp(); },
+    stamMax: () => { S.stamMax += 25; P.stamina = S.stamMax; },
+    orbs: () => { S.orbs += 10; },
+    weapons: () => { S.weapons = []; ['radiant', 'knight', 'spear', 'club', 'rusty'].forEach((id) => addWeapon(id)); S.sel = 0; refreshWeaponModel(); },
+    food: (k, n) => { S[k] = (S[k] || 0) + n; },
+    hour: () => S.time * 24, setHour: (h) => { S.time = (h / 24) % 1; },
+    rain: (on) => { weather.on = on; weather.t = on ? 9999 : 60; },
+    reveal: () => { for (let x = -800; x <= 800; x += 120) for (let z = -800; z <= 800; z += 120) ui.reveal(x, z, 160); },
+    towers: () => T.TOWERS.forEach((t) => { S.towers[t.id] = true; world.setTowerActive(t.id, true); ui.reveal(t.x, t.z, 300); }),
+    shrines: () => T.SHRINES.forEach((t) => { S.shrines[t.id] = true; world.setShrineState(t.id, 1); ui.reveal(t.x, t.z, 110); }),
+    lumis: () => { S.lumis = S.lumis.map(() => true); S.lumis.forEach((_, i) => world.collectLumi(i)); },
+    killAll: () => { for (const e of enemies) if (!e.dead && e.hurt(1e6, 0, 0, { kb: 0 })) onKill(e); },
+    spawn: (kind) => { const [x, z] = ahead(9); spawnEnemy(kind, x, z, -2); },
+    part: (key) => { const [x, z] = ahead(6); builder.addGroup(key, x, world.surfaceHeight(x, z, P.y + 6) + PARTS[key].size[1] / 2 + 0.5, z); },
+    teleport: (x, z, name) => teleport(x, z, name),
+    places: () => [
+      { label: 'Départ', x: 0, z: 14 }, { label: 'Atelier', x: T.WORKSHOP.x - 6, z: T.WORKSHOP.z + 8 }, { label: 'Colosse', x: T.BOSS.x + 30, z: T.BOSS.z },
+      ...T.TOWERS.map((t) => ({ label: t.name, x: t.x, z: t.z })),
+      ...T.SHRINES.map((t) => ({ label: t.name, x: t.x, z: t.z + 6 })),
+      ...T.ISLANDS.map((t, i) => ({ label: 'Île céleste ' + (i + 1), x: t.x, z: t.z })),
+    ],
+  };
+}
 
 function startGame(fresh) {
   sfx.ensure();
@@ -260,7 +308,7 @@ function collide(p, y) {
 }
 
 function hurtPlayer(dmg, fromX, fromZ) {
-  if (P.dead || P.inv > 0 || P.roll > 0) return;
+  if (P.dead || P.inv > 0 || P.roll > 0 || CH.god) return;
   P.hp -= dmg; P.inv = 1.1; shake = 0.35;
   const dx = P.x - fromX, dz = P.z - fromZ, d = Math.hypot(dx, dz) || 1;
   P.vx += (dx / d) * 9; P.vz += (dz / d) * 9; if (P.onGround) { P.vy = 5; P.onGround = false; }
@@ -301,6 +349,7 @@ function enterTowerClimb(c, ang) {
 function updatePlayer(dt, inp, shiftHeld) {
   P.inv = Math.max(0, P.inv - dt); P.atkCD = Math.max(0, P.atkCD - dt); P.regenT = Math.max(0, P.regenT - dt);
   let sprinting = false;
+  if (CH.fly) { flyMove(dt, inp); return; }
   switch (P.mode) {
     case 'climbT': climbTower(dt, shiftHeld); break;
     case 'climbW': climbWall(dt, inp, shiftHeld); break;
@@ -312,6 +361,15 @@ function updatePlayer(dt, inp, shiftHeld) {
   else if (P.mode === 'ground' && P.glide) P.stamina = Math.min(S.stamMax, P.stamina + 8 * dt);
   if (P.exhausted && P.stamina >= S.stamMax * 0.5) P.exhausted = false;
   P.stamina = clamp(P.stamina, 0, S.stamMax);
+  if (CH.stam) { P.stamina = S.stamMax; P.exhausted = false; }
+}
+
+function flyMove(dt, inp) {
+  const k = CH.speed * 14;
+  P.vx = P.vy = P.vz = 0; P.onGround = false; P.glide = false; P.launched = false; P.mode = 'ground'; P.roll = 0;
+  P.x = clamp(P.x + inp.mx * k * dt, -T.HALF + 4, T.HALF - 4); P.z = clamp(P.z + inp.mz * k * dt, -T.HALF + 4, T.HALF - 4);
+  P.y += ((keys.Space ? 1 : 0) - (keys.KeyC ? 1 : 0)) * k * dt;
+  if (Math.hypot(inp.mx, inp.mz) > 0.1) P.yaw += clamp(angDiff(P.yaw, Math.atan2(inp.mx, inp.mz)), -14 * dt, 14 * dt);
 }
 
 function moveFree(dt, inp, shiftHeld) {
@@ -350,8 +408,8 @@ function moveFree(dt, inp, shiftHeld) {
       if (Math.hypot(P.x - c.def.x, P.z - c.def.z) < 3.4 && P.y > c.def.y && P.y < c.def.y + 40) P.vy = Math.min(7, P.vy + 40 * dt);
     }
   } else {
-    let sp = WALK;
-    if (shiftHeld && inp.mag > 0.1 && P.stamina > 0 && !P.exhausted && P.onGround) { sp = RUN; sprinting = true; P.stamina -= 7 * dt; P.regenT = 0.7; if (P.stamina <= 0) { P.stamina = 0; P.exhausted = true; } }
+    let sp = WALK * CH.speed;
+    if (shiftHeld && inp.mag > 0.1 && P.stamina > 0 && !P.exhausted && P.onGround) { sp = RUN * CH.speed; sprinting = true; P.stamina -= 7 * dt; P.regenT = 0.7; if (P.stamina <= 0) { P.stamina = 0; P.exhausted = true; } }
     if (P.atk >= 0) sp *= 0.3;
     if (groundNow < T.WATER - 0.2 && P.onGround) sp *= 0.65; // gué
     let tx = inp.mx * sp, tz = inp.mz * sp;
@@ -503,7 +561,7 @@ function startAttack() {
 }
 function doHit() {
   const w = weapon(), def = w ? WEAPONS[w.id] : { dmg: 2, reach: 1.7 };
-  const fz = fuseOf(w), dmg = def.dmg + (fz ? fz.dmg : 0) * 1;
+  const fz = fuseOf(w), dmg = CH.oneshot ? 99999 : def.dmg + (fz ? fz.dmg : 0) * 1;
   let hit = 0;
   for (const e of enemies) {
     if (e.dead) continue;
@@ -519,7 +577,7 @@ function doHit() {
   }
   if (hit) {
     sfx.hit(); shake = Math.max(shake, 0.12);
-    if (w) { w.dur -= 1; if (w.dur <= 0) { sfx.broke(); ui.banner('Arme brisée !', WEAPONS[w.id].name, 1800); S.weapons.splice(S.sel, 1); S.sel = Math.max(0, Math.min(S.sel, S.weapons.length - 1)); refreshWeaponModel(); } }
+    if (w && !CH.dura) { w.dur -= 1; if (w.dur <= 0) { sfx.broke(); ui.banner('Arme brisée !', WEAPONS[w.id].name, 1800); S.weapons.splice(S.sel, 1); S.sel = Math.max(0, Math.min(S.sel, S.weapons.length - 1)); refreshWeaponModel(); } }
   }
 }
 function onKill(e) {
@@ -737,7 +795,7 @@ function updateCamera(dt) {
 
 function tick(dt, now) {
   S.play += dt;
-  S.time = (S.time + dt / 540) % 1;
+  if (!CH.freeze) S.time = (S.time + dt / 540) % 1;
   // météo
   weather.t -= dt;
   if (weather.t <= 0) {
@@ -880,7 +938,7 @@ function frame(now) {
   const t = now / 1000, dt = Math.min(0.05, Math.max(0, t - last)); last = t;
   if (mode === 'play') tick(dt, t);
   else if (mode === 'title') titleScene(dt);
-  else if (mode === 'pause' || mode === 'map' || mode === 'dead') { world.update(0, t, P); }
+  else if (mode === 'pause' || mode === 'map' || mode === 'dead' || mode === 'cheat') { world.update(0, t, P); }
   if (mode !== 'loading') renderer.render(scene, camera);
 }
 
@@ -901,6 +959,7 @@ async function boot() {
   $('loadMsg').textContent = 'Cartographie…';
   await wait(30);
   ui.renderBaseMap();
+  cheats = initCheats(cheatApi());
 
   const sv = readSave();
   $('btnContinue').disabled = !sv;
@@ -921,4 +980,4 @@ $('titleMenu').classList.add('hidden');
 boot();
 
 // Accès de débogage / tests
-window.__eolia = { get trial() { return trial; }, setYaw: (v) => { camYaw = v; }, activate, findInteract, get S() { return S; }, P, get mode() { return mode; }, T, teleport, startGame, tick: (dt = 0.016) => tick(dt, performance.now() / 1000), get world() { return world; }, get builder() { return builder; }, get enemies() { return enemies; }, setTime: (t) => { S.time = t; }, keys, just, mouse, camera, score };
+if (window.__EOLIA_TEST__) window.__eolia = { get cheats() { return cheats; }, CH, get trial() { return trial; }, setYaw: (v) => { camYaw = v; }, activate, findInteract, get S() { return S; }, P, get mode() { return mode; }, T, teleport, startGame, tick: (dt = 0.016) => tick(dt, performance.now() / 1000), get world() { return world; }, get builder() { return builder; }, get enemies() { return enemies; }, setTime: (t) => { S.time = t; }, keys, just, mouse, camera, score };
