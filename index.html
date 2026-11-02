@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b1020">
+<title>ÉOLIA — Terres ouvertes</title>
+<style>
+  :root{--ink:#f4f1e6;--mut:#a7b3c4;--gold:#ffd23c;--cy:#35d8ff;--panel:rgba(10,16,30,.78);--line:rgba(255,255,255,.14)}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:#0b1020;color:var(--ink);font-family:"Trebuchet MS",ui-rounded,system-ui,sans-serif;user-select:none;-webkit-user-select:none}
+  #gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+  .hidden{display:none!important}
+  .screen{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;text-align:center;
+    background:radial-gradient(1000px 600px at 50% 30%,rgba(30,60,110,.55),rgba(5,8,16,.92));z-index:20;overflow:auto}
+  h1{margin:0;font-size:clamp(40px,9vw,92px);letter-spacing:.18em;font-weight:800;color:#fff7dc;text-shadow:0 0 28px rgba(255,210,60,.55),0 3px 0 #b8861a}
+  h1 small{display:block;font-size:.22em;letter-spacing:.5em;color:var(--cy);text-shadow:none;margin-top:6px}
+  h2{margin:0 0 8px;font-size:14px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold)}
+  p{margin:0;color:var(--mut);font-size:14px;line-height:1.55}
+  button{cursor:pointer;font:inherit;font-weight:700;letter-spacing:.08em;color:#17110a;background:linear-gradient(#ffe27a,#ffc233);border:0;border-radius:10px;padding:11px 26px;
+    box-shadow:0 4px 0 #a9780f,0 10px 24px rgba(0,0,0,.35);transition:transform .08s}
+  button:hover{transform:translateY(-1px)} button:active{transform:translateY(2px);box-shadow:0 2px 0 #a9780f}
+  button.alt{background:linear-gradient(#cfe6ff,#8fbfee);box-shadow:0 4px 0 #4d7fae,0 10px 24px rgba(0,0,0,.35)}
+  button:disabled{opacity:.45;cursor:default;transform:none}
+  input[type=text]{width:240px;padding:11px 14px;border-radius:10px;border:1px solid var(--line);background:rgba(0,0,0,.4);color:var(--ink);font:inherit;font-size:16px;text-align:center;outline:none}
+  input[type=text]:focus{border-color:var(--gold)}
+  .row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;align-items:center}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;min-width:250px;max-width:360px;text-align:left;backdrop-filter:blur(6px)}
+  .keys{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px;color:var(--mut)}
+  .keys b{color:var(--ink);font-weight:700}
+  ol.board{margin:0;padding:0;list-style:none;counter-reset:r;font-size:14px}
+  ol.board li{counter-increment:r;display:flex;gap:10px;padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.1)}
+  ol.board li::before{content:counter(r);width:18px;text-align:right;color:var(--mut)}
+  ol.board .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}ol.board .s{color:var(--cy);font-weight:700}
+  ol.board li.empty::before{content:""}
+  .small{font-size:12px;color:var(--mut)}
+  label{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:13px;color:var(--mut);margin:6px 0}
+  input[type=range]{width:140px}
+
+  /* HUD */
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
+  #hearts{position:absolute;left:18px;top:14px;display:flex;flex-wrap:wrap;gap:2px;max-width:380px;font-size:26px;text-shadow:0 2px 4px #000a}
+  .heart{background:linear-gradient(90deg,#ff4a5a var(--p),#33141a var(--p));-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-stroke:1px rgba(0,0,0,.55)}
+  #stam{position:absolute;left:50%;top:56%;transform:translate(-50%,-50%);width:96px;height:96px;margin-left:-92px}
+  #objectives{position:absolute;left:18px;top:62px;font-size:12px;line-height:1.6;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;color:var(--mut)}
+  #objectives b{color:var(--gold);letter-spacing:.15em}#objectives em{font-style:normal;color:var(--ink);float:right;margin-left:18px}
+  #weapons{position:absolute;right:18px;bottom:16px;width:230px;display:flex;flex-direction:column;gap:4px}
+  .slot{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:5px 8px 8px;font-size:12px;display:flex;gap:8px;overflow:hidden}
+  .slot b{color:var(--mut)}.slot i{position:absolute;left:0;bottom:0;height:3px}.slot.sel{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold) inset}
+  .food{font-size:12px;text-align:right;color:var(--ink);text-shadow:0 1px 3px #000}
+  #mini{position:absolute;right:16px;top:14px;width:160px;height:160px}
+  #miniC{width:160px;height:160px;border-radius:50%;border:3px solid rgba(255,255,255,.75);box-shadow:0 4px 18px #0008}
+  #clock{position:absolute;left:0;right:0;bottom:-22px;text-align:center;font-size:13px;text-shadow:0 1px 3px #000}
+  #crosshair{position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:rgba(255,255,255,.7);box-shadow:0 0 4px #000}
+  #prompt{position:absolute;left:50%;bottom:20%;transform:translateX(-50%);padding:8px 18px;border-radius:999px;background:var(--panel);border:1px solid var(--gold);font-weight:700;opacity:0;transition:opacity .15s;white-space:nowrap}
+  #toasts{position:absolute;left:50%;top:92px;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center}
+  .toast{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 16px;font-size:14px;animation:in .25s;transition:opacity .5s}.toast.out{opacity:0}
+  @keyframes in{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
+  #bossbar{display:none;position:absolute;left:50%;top:18px;transform:translateX(-50%);width:min(520px,60vw);text-align:center}
+  #bossname{letter-spacing:.25em;text-transform:uppercase;font-size:12px;margin-bottom:4px;text-shadow:0 2px 4px #000}
+  #bossbar .bar{height:12px;border-radius:8px;background:rgba(0,0,0,.6);border:1px solid var(--line);overflow:hidden}#bossfill{height:100%;background:linear-gradient(90deg,#ff3a3a,#ff9a3a);width:100%}
+  #trial{display:none;position:absolute;left:50%;top:150px;transform:translateX(-50%);font-size:22px;font-weight:800;color:var(--gold);text-shadow:0 2px 6px #000}
+  #banner{position:absolute;left:0;right:0;top:34%;text-align:center;opacity:0;transform:scale(.96);transition:opacity .6s,transform .6s}
+  #banner.show{opacity:1;transform:none}
+  #bannerT{font-size:clamp(28px,5vw,54px);font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#fff7dc;text-shadow:0 0 24px rgba(255,210,60,.7),0 3px 0 #000}
+  #bannerS{font-size:15px;color:var(--cy);letter-spacing:.2em;margin-top:6px;text-shadow:0 2px 4px #000}
+  #floaters .float,.float{position:fixed;font-weight:800;font-size:20px;text-shadow:0 2px 3px #000;animation:up .9s forwards;pointer-events:none;transform:translate(-50%,-50%)}
+  @keyframes up{to{transform:translate(-50%,-150%);opacity:0}}
+  #vignette{position:absolute;inset:0;opacity:0;transition:opacity .25s;background:radial-gradient(circle,transparent 45%,rgba(255,0,0,.55))}
+  #hint{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);font-size:12px;color:#fff;text-shadow:0 1px 3px #000;opacity:0;transition:opacity .4s;white-space:nowrap}
+  #mapScreen canvas{width:min(92vh,92vw);height:min(92vh,92vw);border-radius:14px;border:2px solid rgba(255,255,255,.4);cursor:crosshair}
+  #errbox{position:fixed;left:10px;right:10px;bottom:10px;z-index:99;background:#3a0a10;color:#ffd6d6;border:1px solid #ff6a6a;border-radius:10px;padding:10px 14px;font:12px ui-monospace,monospace;white-space:pre-wrap;display:none;max-height:40vh;overflow:auto;user-select:text}
+  @media (max-width:760px){#objectives,#weapons{display:none}}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="hearts"></div>
+  <canvas id="stam" width="96" height="96"></canvas>
+  <div id="objectives"></div>
+  <div id="weapons"></div>
+  <div id="mini"><canvas id="miniC" width="160" height="160"></canvas><div id="clock"></div></div>
+  <div id="crosshair"></div>
+  <div id="prompt"></div>
+  <div id="toasts"></div>
+  <div id="bossbar"><div id="bossname"></div><div class="bar"><div id="bossfill"></div></div></div>
+  <div id="trial"></div>
+  <div id="banner"><div id="bannerT"></div><div id="bannerS"></div></div>
+  <div id="floaters"></div>
+  <div id="vignette"></div>
+  <div id="hint"></div>
+</div>
+
+<div id="title" class="screen">
+  <h1>ÉOLIA<small>TERRES OUVERTES</small></h1>
+  <p id="loadMsg">Génération du monde…</p>
+  <div id="titleMenu" class="hidden" style="display:contents">
+    <input id="nameInput" type="text" maxlength="16" placeholder="Ton pseudo" autocomplete="off" spellcheck="false">
+    <div class="row"><button id="btnContinue" class="alt">CONTINUER</button><button id="btnNew">NOUVELLE PARTIE</button></div>
+    <div class="row" style="align-items:flex-start">
+      <div class="card"><h2>Commandes</h2><div class="keys">
+        <b>ZQSD / WASD</b><span>Se déplacer · Maj : sprint</span>
+        <b>Espace</b><span>Sauter · en l’air : parapente</span>
+        <b>Vers une paroi</b><span>Escalader (endurance !)</span>
+        <b>Clic gauche</b><span>Attaquer · Q : roulade</span>
+        <b>E</b><span>Interagir · H : manger · F : fusionner</span>
+        <b>Clic droit (tenir)</b><span>Main-Mère : saisir un objet</span>
+        <b>… puis clic gauche</b><span>Coller · molette : tourner</span>
+        <b>X (tenir)</b><span>Rappel : remonter le temps d’un objet</span>
+        <b>B</b><span>Moteur du véhicule · V : détacher</span>
+        <b>1-5 / molette</b><span>Armes · M : carte · Tab : menu</span></div></div>
+      <div class="card"><h2>Classement des explorateurs</h2><ol id="titleBoard" class="board"></ol><div class="small" id="titleBoardStatus"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="pause" class="screen hidden">
+  <h2 style="font-size:20px">Pause</h2>
+  <div class="row" style="align-items:flex-start">
+    <div class="card">
+      <h2>Esprits d’orbe : <span id="orbCount">0</span></h2>
+      <div class="row"><button id="btnHeart" class="alt">+1 CŒUR</button><button id="btnStam" class="alt">+ENDURANCE</button></div>
+      <p class="small" style="margin-top:8px">1 orbe = 1 cœur (soin complet) ou +25 d’endurance.</p>
+      <h2 style="margin-top:14px">Réglages</h2>
+      <label>Sensibilité <input id="sensRange" type="range" min="0.3" max="2.5" step="0.1" value="1"></label>
+      <label>Volume <input id="volRange" type="range" min="0" max="1" step="0.05" value="0.5"></label>
+      <label>Ombres <input id="shadowChk" type="checkbox" checked></label>
+      <label>Qualité
+        <select id="qualitySel"><option value="0.6">Basse</option><option value="1" selected>Moyenne</option><option value="1.6">Haute</option></select></label>
+    </div>
+    <div class="card"><h2>Mon score : <span id="scoreNow">0</span></h2>
+      <div class="row"><button id="btnPublish">PUBLIER</button></div><div class="small" id="pubStatus" style="margin-top:6px"></div>
+      <h2 style="margin-top:14px">Classement</h2><ol id="pauseBoard" class="board"></ol></div>
+  </div>
+  <div class="row"><button id="btnResume">REPRENDRE</button><button id="btnSaveQuit" class="alt">SAUVEGARDER &amp; TITRE</button></div>
+</div>
+
+<div id="mapScreen" class="screen hidden">
+  <canvas id="mapC" width="760" height="760"></canvas>
+  <p>Clique sur un point entouré pour voyager · M ou Échap pour fermer</p>
+</div>
+
+<div id="dead" class="screen hidden"><h1 style="font-size:clamp(30px,6vw,60px)">VOUS AVEZ SUCCOMBÉ</h1><button id="btnRespawn">REPRENDRE</button></div>
+
+<div id="errbox"></div>
+<script src="config.js"></script>
+<script>
+  // Affiche proprement toute erreur (utile pour déboguer sur n'importe quel appareil)
+  (function () {
+    var box = document.getElementById('errbox');
+    function show(m) { box.style.display = 'block'; box.textContent += m + '\n'; }
+    window.addEventListener('error', function (e) { show('Erreur : ' + e.message + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
+    window.addEventListener('unhandledrejection', function (e) { show('Erreur : ' + (e.reason && e.reason.message || e.reason)); });
+    // Chargement de Three.js : copie locale (vendor/) sinon CDN
+    var urls = ['./vendor/three.module.min.js', 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js', 'https://unpkg.com/three@0.160.0/build/three.module.js'];
+    (async function () {
+      var ok = null;
+      for (var i = 0; i < urls.length && !ok; i++) {
+        try { var r = await fetch(urls[i], { method: 'HEAD' }); if (r.ok) ok = urls[i]; } catch (e) {}
+      }
+      if (!ok) { document.getElementById('loadMsg').textContent = 'Impossible de charger Three.js (connexion ?).'; show('Three.js introuvable : vérifie ta connexion ou place vendor/three.module.min.js'); return; }
+      var im = document.createElement('script'); im.type = 'importmap'; im.textContent = JSON.stringify({ imports: { three: ok } }); document.head.appendChild(im);
+      var m = document.createElement('script'); m.type = 'module'; m.src = 'src/main.js'; document.body.appendChild(m);
+    })();
+  })();
+</script>
+</body>
+</html>
